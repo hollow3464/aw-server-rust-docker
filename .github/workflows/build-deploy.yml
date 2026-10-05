@@ -23,7 +23,7 @@ jobs:
         uses: Infisical/secrets-action@v1.0.16
         with:
           method: "oidc"
-          identity-id: "3f171cfc-7f39-4614-bff5-6a695d97b456"
+          identity-id: "ce1125cd-acfe-4f15-b993-9addffaa51f9"
           project-slug: "ci-secrets"
           env-slug: "dev"
 
@@ -62,7 +62,7 @@ jobs:
         uses: Infisical/secrets-action@v1.0.16
         with:
           method: "oidc"
-          identity-id: "3f171cfc-7f39-4614-bff5-6a695d97b456"
+          identity-id: "ce1125cd-acfe-4f15-b993-9addffaa51f9"
           project-slug: "ci-secrets"
           env-slug: "dev"
 
