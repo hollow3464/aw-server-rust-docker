@@ -1,0 +1,45 @@
+---
+name: Check upstream ActivityWatch
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get latest upstream commit hash
+        id: upstream
+        run: |
+          HASH=$(git ls-remote https://github.com/ActivityWatch/aw-server-rust refs/heads/master | cut -f1)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream hash: $HASH"
+
+      - name: Compare with stored hash
+        id: compare
+        run: |
+          STORED=$(cat upstream-hash.txt 2>/dev/null || echo "")
+          echo "Stored hash: $STORED"
+          if [ "$STORED" != "${{ steps.upstream.outputs.hash }}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update hash file and push
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          echo "${{ steps.upstream.outputs.hash }}" > upstream-hash.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add upstream-hash.txt
+          git commit -m "chore: update upstream hash to ${{ steps.upstream.outputs.hash }}"
+          git push

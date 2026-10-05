@@ -1,0 +1,106 @@
+---
+name: Build, push and deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "upstream-hash.txt"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # Required for GitHub to issue an OIDC token
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: "oidc"
+          identity-id: "3f171cfc-7f39-4614-bff5-6a695d97b456"
+          project-slug: "ci-secrets"
+          env-slug: "dev"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Get current upstream hash
+        id: hash
+        run: echo "hash=$(cat upstream-hash.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Clone aw-server-rust at stored hash
+        run: |
+          git clone --recursive https://github.com/ActivityWatch/aw-server-rust.git /tmp/aw-server-rust
+          cd /tmp/aw-server-rust
+          git checkout ${{ steps.hash.outputs.hash }}
+          git submodule update --init --recursive
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: /tmp/aw-server-rust
+          file: /tmp/aw-server-rust/scripts/Dockerfile
+          push: true
+          tags: |
+            daved3464/activitywatch:${{ steps.hash.outputs.hash }}
+            daved3464/activitywatch:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: "oidc"
+          identity-id: "3f171cfc-7f39-4614-bff5-6a695d97b456"
+          project-slug: "ci-secrets"
+          env-slug: "dev"
+
+      - name: Send push event to webhook (with HMAC SHA256 signature)
+        env:
+          WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ env.WEBHOOK_SECRET }}
+        run: |
+          CLONE_URL="ssh://git@github.com/${GITHUB_REPOSITORY}.git"
+          PAYLOAD=$(jq -n \
+            --arg ref "${GITHUB_REF}" \
+            --arg before "${GITHUB_SHA}" \
+            --arg after "${GITHUB_SHA}" \
+            --arg clone_url "$CLONE_URL" \
+            --arg reponame "${GITHUB_REPOSITORY##*/}" \
+            --arg repo_fullname "${GITHUB_REPOSITORY}" \
+            --arg pusher_name "${GITHUB_ACTOR}" \
+            --arg pusher_email "noreply@github.com" \
+            '{
+              ref: $ref,
+              before: $before,
+              after: $after,
+              repository: {
+                name: $reponame,
+                full_name: $repo_fullname,
+                clone_url: $clone_url
+              },
+              pusher: {
+                name: $pusher_name,
+                email: $pusher_email
+              }
+            }'
+          )
+
+          SIGNATURE="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | sed 's/^.* //')"
+
+          curl -v "$WEBHOOK_URL" \
+            -H "X-GitHub-Event: push" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIGNATURE" \
+            -d "$PAYLOAD"
