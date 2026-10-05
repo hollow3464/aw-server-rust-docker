@@ -10,3 +10,4 @@ services:
     volumes:
       - data:/home/aw/.local/share/activitywatch/aw-server-rust
     restart: unless-stopped
+    command: aw-server-rust --host 0.0.0.0
