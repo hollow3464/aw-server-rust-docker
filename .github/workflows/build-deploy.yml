@@ -4,8 +4,6 @@ name: Build, push and deploy
 on:
   push:
     branches: [main]
-    paths:
-      - "upstream-hash.txt"
   workflow_dispatch:
 
 permissions:
