@@ -1,0 +1,12 @@
+---
+volumes:
+  data:
+
+services:
+  activitywatch:
+    image: daved3464/activitywatch:latest
+    ports:
+      - 5600:5600
+    volumes:
+      - data:/home/aw/.local/share/activitywatch/aw-server-rust
+    restart: unless-stopped
